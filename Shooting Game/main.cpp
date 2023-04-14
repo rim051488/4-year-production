@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <tchar.h>
+#include "DX12/DX12.h"
 
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
@@ -8,7 +9,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #define CLASS_NAME "CLASS TEST01"
 #define PROC_NAME "ShootingGame"
 
-int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPreInst, LPTSTR lpCmdLine, int nCmdShow)
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPreInst, LPTSTR lpCmdLine, int nCmdShow)
 {
 	HWND			hwnd;
 	MSG				msg;
@@ -63,14 +64,17 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPreInst, LPTSTR lpCmdLine
 
 	ShowWindow(hwnd, nCmdShow);
 	UpdateWindow(hwnd);
+	DX12* resouce = new DX12(hwnd, WINDOW_WIDTH, WINDOW_HEIGHT);		// ‰Šú‰»
 	do 
 	{
-		if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
+		if (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+		resouce->Render();	// •`‰æ
 	} while (msg.message != WM_QUIT);
+	delete resouce;			// Á‹
 	return (int)(msg.wParam);
 }
 
