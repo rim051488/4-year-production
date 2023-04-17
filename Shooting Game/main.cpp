@@ -1,92 +1,153 @@
 #include <Windows.h>
-#include <tchar.h>
+#include <vector>
+// あとからクラス分けすること-------------------
+#include <d3d12.h>
+#include <dxgi1_6.h>
+// ---------------------------------------------
+#ifdef _DEBUG
+#include <iostream>
 #include "DX12/DX12.h"
+#endif
+
+#pragma comment(lib,"d3d12.lib")
+#pragma comment(lib,"dxgi.lib")
 
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-#define CLASS_NAME "CLASS TEST01"
-#define PROC_NAME "ShootingGame"
+using namespace std;
 
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPreInst, LPTSTR lpCmdLine, int nCmdShow)
+// ウィンドウプロシージャの作成
+LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	HWND			hwnd;
-	MSG				msg;
-	if (!hPreInst)
+	// ウィンドウが破棄されたときによばれる
+	if (msg == WM_DESTROY)
 	{
-		// ウィンドウクラスの初期化
-		WNDCLASS	my_prog;
-		my_prog.style = CS_HREDRAW | CS_VREDRAW;
-		my_prog.lpfnWndProc = WndProc;
-		my_prog.cbClsExtra = 0;
-		my_prog.cbWndExtra = 0;
-		my_prog.hInstance = hInstance;
-		my_prog.hIcon = nullptr;
-		my_prog.hCursor = LoadCursor(nullptr, IDC_ARROW);
-		my_prog.hbrBackground = nullptr;
-		my_prog.lpszMenuName = nullptr;
-		my_prog.lpszClassName = _T(CLASS_NAME);
-
-		if (!RegisterClass(&my_prog))
-		{
-			return false;
-		}
+		PostQuitMessage(0);	// OSに対して終わることを伝える
+		return 0;
 	}
+	return DefWindowProc(hwnd, msg, wparam, lparam);	// 既定の処理を行う
+}
 
-	// ウィンドウのサイズを決定
-	RECT rect = {
-		(LONG)0,
-		(LONG)0,
-		(LONG)(WINDOW_WIDTH),
-		(LONG)(WINDOW_HEIGHT)
-	};
+void DebugOutputFormatString(const char* format,...)
+{
+#ifdef _DEBUG
+	va_list valist;
+	va_start(valist, format);
+	printf_s(valist);
+#endif
+}
+#ifdef _DEBUG
+int main()
+{
+	unique_ptr<DX12> dx12;
+	dx12 = make_unique<DX12>();
 
-	// ウィンドウサイズの補正
-	AdjustWindowRect(
-		&rect,											// クライアント矩形
-		WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION,		// ウィンドウスタイル
-		false											// メニューフラグ
-	);
-	// ウィンドウ作成
-	hwnd = CreateWindow(_T(CLASS_NAME),					// クラス名指定
-		_T(PROC_NAME),									// タイトルバーの文字
-		WS_OVERLAPPEDWINDOW,							// タイトルバーと境界線があるウィンドウ
-		CW_USEDEFAULT,									// 表示 X 座標は OS にお任せします
-		CW_USEDEFAULT,									// 表示 Y 座標は OS にお任せします
-		rect.right - rect.left,							// ウィンドウの幅
-		rect.bottom - rect.top,							// ウィンドウの高さ
-		nullptr,										// 親ウィンドウハンドル
-		nullptr,										// メニューハンドル
-		hInstance,										// 呼び出しアプリケーションハンドル
-		nullptr											// 追加ハンドル
-	);
+	// ウィンドウクラスの生成&登録
+	WNDCLASSEX w = {};
+	w.cbSize = sizeof(WNDCLASSEX);
+	// コールバック関数の指定
+	w.lpfnWndProc = (WNDPROC)WindowProcedure;
+	// アプリケーションクラス名
+	w.lpszClassName = "ShootingGame";
+	// ハンドルの取得
+	w.hInstance = GetModuleHandle(nullptr);
 
-	ShowWindow(hwnd, nCmdShow);
-	UpdateWindow(hwnd);
-	DX12* resouce = new DX12(hwnd, WINDOW_WIDTH, WINDOW_HEIGHT);		// 初期化
-	do 
+	// アプリケーションクラス(ウィンドウクラスの指定をOSに伝える)
+	RegisterClassEx(&w);
+
+	// ウィンドウサイズを決める
+	RECT wrc = { 0,0,WINDOW_WIDTH ,WINDOW_HEIGHT};	
+
+	// 関数を使ってウィンドウのサイズを補正する
+	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
+	
+	// ウィンドウオブジェクトの生成
+	HWND hwnd = CreateWindow(w.lpszClassName,	// クラス名指定
+		"ShootingGame",							// タイトルバーの文字
+		WS_OVERLAPPEDWINDOW,					// タイトルバーと境界線があるウィンドウ
+		CW_USEDEFAULT,							// 表示x座標はOSに任せる
+		CW_USEDEFAULT,							// 表示y座標はOSに任せる
+		wrc.right - wrc.left,					// ウィンドウの幅
+		wrc.bottom - wrc.top,					// ウィンドウの高さ
+		nullptr,								// 親ウィンドウハンドル
+		nullptr,								// メニューハンドル
+		w.hInstance,							// 呼び出しアプリケーションハンドル
+		nullptr);								// 追加パラメータ
+	// ウィンドウの表示
+	ShowWindow(hwnd, SW_SHOW);
+	MSG msg = {};
+	while (true)
 	{
-		if (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		resouce->Render();	// 描画
-	} while (msg.message != WM_QUIT);
-	delete resouce;			// 消去
-	return (int)(msg.wParam);
+		// アプリケーションが終わるときにmessageがWM_QUITになる
+		if (msg.message == WM_QUIT)
+		{
+			break;
+		}
+	}
+	// もうクラスは使わないので登録解除する
+	UnregisterClass(w.lpszClassName, w.hInstance);
+#else
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+	// ウィンドウクラスの生成&登録
+	WNDCLASSEX w = {};
+	w.cbSize = sizeof(WNDCLASSEX);
+	// コールバック関数の指定
+	w.lpfnWndProc = (WNDPROC)WindowProcedure;
+	// アプリケーションクラス名
+	w.lpszClassName = L"ShootingGame";
+	// ハンドルの取得
+	w.hInstance = GetModuleHandle(nullptr);
+
+	// アプリケーションクラス(ウィンドウクラスの指定をOSに伝える)
+	RegisterClassEx(&w);
+
+	// ウィンドウサイズを決める
+	RECT wrc = { 0,0,WINDOW_WIDTH ,WINDOW_HEIGHT };
+
+	// 関数を使ってウィンドウのサイズを補正する
+	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
+
+	// ウィンドウオブジェクトの生成
+	HWND hwnd = CreateWindow(w.lpszClassName,	// クラス名指定
+		L"ShootingGame",							// タイトルバーの文字
+		WS_OVERLAPPEDWINDOW,					// タイトルバーと境界線があるウィンドウ
+		CW_USEDEFAULT,							// 表示x座標はOSに任せる
+		CW_USEDEFAULT,							// 表示y座標はOSに任せる
+		wrc.right - wrc.left,					// ウィンドウの幅
+		wrc.bottom - wrc.top,					// ウィンドウの高さ
+		nullptr,								// 親ウィンドウハンドル
+		nullptr,								// メニューハンドル
+		w.hInstance,							// 呼び出しアプリケーションハンドル
+		nullptr);								// 追加パラメータ
+	// ウィンドウの表示
+	ShowWindow(hwnd, SW_SHOW);
+	MSG msg = {};
+	while (true)
+	{
+		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		// アプリケーションが終わるときにmessageがWM_QUITになる
+		if (msg.message == WM_QUIT)
+		{
+			break;
+		}
+	}
+	// もうクラスは使わないので登録解除する
+	UnregisterClass(w.lpszClassName, w.hInstance);
+
+#endif
+	DebugOutputFormatString("Show window test.");
+	getchar();
+	return 0;
 }
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	switch (msg)
-	{
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		break;
-	default:
-		return (DefWindowProc(hwnd, msg, wParam, lParam));
-	}
-	return (0L);
-}
