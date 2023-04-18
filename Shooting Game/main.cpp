@@ -105,7 +105,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		{
 			break;
 		}
-		//dx12->Render();
+		dx12->Render();
 	}
 	// ‚à‚¤ƒNƒ‰ƒX‚Íg‚í‚È‚¢‚Ì‚Å“o˜^‰ğœ‚·‚é
 	UnregisterClass(w.lpszClassName, w.hInstance);
