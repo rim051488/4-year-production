@@ -64,6 +64,7 @@ private:
 	ShaderObject pixel_shader;
 	ComPtr<ID3D12Resource> vertex_buffer_;
 	D3D12_VERTEX_BUFFER_VIEW buffer_pos_;
+	ComPtr<IDXGIAdapter> adapter_;
 
 	// ファクトリーを作成
 	void CreateFactory(HRESULT hr, UINT flagsDXGI);

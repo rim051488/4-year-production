@@ -29,7 +29,7 @@ void DX12::Render(void)
 	// 指定なし
 	BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 	// バックバッファリソース
-	BarrierDesc.Transition.pResource = backBuffers_[bbIdx];
+	BarrierDesc.Transition.pResource = backBuffers_[bbIdx].Get();
 	BarrierDesc.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	// 直前はPRESENT状態
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
@@ -56,15 +56,15 @@ void DX12::Render(void)
 	cmdList_->Close();
 
 	// コマンドリストの実行
-	ID3D12CommandList* cmdlists[] = { cmdList_ };
-	cmdQueue->ExecuteCommandLists(1, cmdlists);
+	ID3D12CommandList* cmdlists = cmdList_.Get();
+	cmdQueue_->ExecuteCommandLists(1, &cmdlists);
 
 	// 待ち
-	cmdQueue->Signal(fence, ++fenceVal);
-	if (fence->GetCompletedValue() != fenceVal)
+	cmdQueue_->Signal(fence_.Get(), ++fenceVal_);
+	if (fence_->GetCompletedValue() != fenceVal_)
 	{
 		auto event = CreateEvent(nullptr, false, false, nullptr);
-		fence->SetEventOnCompletion(fenceVal, event);
+		fence_->SetEventOnCompletion(fenceVal_, event);
 		WaitForSingleObject(event, INFINITE);
 		CloseHandle(event);
 	}
@@ -72,7 +72,7 @@ void DX12::Render(void)
 	// キューをクリア
 	cmdAllcator_->Reset();
 	// コマンドリストをためる準備
-	cmdList_->Reset(cmdAllcator_, nullptr);
+	cmdList_->Reset(cmdAllcator_.Get(), nullptr);
 
 	// フリップ
 	swapchain_->Present(1, 0);
@@ -83,9 +83,9 @@ void DX12::CreateDvice(void)
 	dev_ = nullptr;
 	dxgiFactory_ = nullptr;
 	// デバイスの初期化をする前にグラボが何かを調べる
-	if (FAILED(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&dxgiFactory_))))
+	if (FAILED(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(dxgiFactory_.ReleaseAndGetAddressOf()))))
 	{
-		if (FAILED(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&dxgiFactory_))))
+		if (FAILED(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(dxgiFactory_.ReleaseAndGetAddressOf()))))
 		{
 			return;
 		}
@@ -110,7 +110,7 @@ void DX12::CreateDvice(void)
 		std::wstring strDesc = adesc.Description;
 
 		// 探したいアダプターの名前を確認
-		if (strDesc.find(L"NVIDIA") == string::npos)
+		if (strDesc.contains(L"NVIDIA") || strDesc.contains(L"AMD"))
 		{
 			tmpAdapter = adpt;
 			break;
@@ -129,11 +129,15 @@ void DX12::CreateDvice(void)
 	for (auto level : levels)
 	{
 		// 生成可能かどうかを調べる
-		if (D3D12CreateDevice(tmpAdapter, level, IID_PPV_ARGS(&dev_)) == S_OK)
+		if (D3D12CreateDevice(tmpAdapter, level, IID_PPV_ARGS(dev_.ReleaseAndGetAddressOf())) == S_OK)
 		{
 			featurelevel = level;
 			break;
 		}
+	}
+	for (auto adpt : adapters)
+	{
+		adpt->Release();
 	}
 }
 
@@ -142,9 +146,9 @@ void DX12::CreateCommand(void)
 	cmdAllcator_ = nullptr;
 	cmdList_ = nullptr;
 	// コマンドアロケーターの初期化
-	auto result = dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmdAllcator_));
+	auto result = dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(cmdAllcator_.ReleaseAndGetAddressOf()));
 	// コマンドリストの初期化
-	result = dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmdAllcator_, nullptr, IID_PPV_ARGS(&cmdList_));
+	result = dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmdAllcator_.Get(), nullptr, IID_PPV_ARGS(cmdList_.ReleaseAndGetAddressOf()));
 }
 
 void DX12::CreateSwapChain(void)
@@ -180,12 +184,12 @@ void DX12::CreateSwapChain(void)
 	swapchainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
 	auto result = dxgiFactory_->CreateSwapChainForHwnd(
-		cmdQueue,
+		cmdQueue_.Get(),
 		hwnd_,
 		&swapchainDesc,
 		nullptr,
 		nullptr,
-		(IDXGISwapChain1**)&swapchain_);		
+		(IDXGISwapChain1**)swapchain_.GetAddressOf());		
 }
 
 void DX12::CreateDescriptor(void)
@@ -200,30 +204,29 @@ void DX12::CreateDescriptor(void)
 
 	rtvHeaps_ = nullptr;
 
-	auto result = dev_->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&rtvHeaps_));
+	auto result = dev_->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(rtvHeaps_.ReleaseAndGetAddressOf()));
 
 	// スワップチェーンとメモリのひも付け
 	result = swapchain_->GetDesc(&swcDesc);
-	vector<ID3D12Resource*> backBuffers(swcDesc.BufferCount);
+	backBuffers_.resize(swcDesc.BufferCount);
 	D3D12_CPU_DESCRIPTOR_HANDLE handle = rtvHeaps_->GetCPUDescriptorHandleForHeapStart();
 
 	for (size_t idx = 0; idx < swcDesc.BufferCount; ++idx)
 	{
-		result = swapchain_->GetBuffer(static_cast<UINT>(idx), IID_PPV_ARGS(&backBuffers[idx]));
+		result = swapchain_->GetBuffer(static_cast<UINT>(idx), IID_PPV_ARGS(backBuffers_[idx].ReleaseAndGetAddressOf()));
 		// ０番目以外のディスクリプタを取得するために
 		dev_->CreateRenderTargetView(
-			backBuffers[idx],
+			backBuffers_[idx].Get(),
 			nullptr,
 			handle);
-		handle.ptr += idx * dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		handle.ptr += dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	}
-	backBuffers_ = backBuffers;
 	CreateFence();
 }
 
 void DX12::CreateCommandQueue(void)
 {
-	cmdQueue = nullptr;
+	cmdQueue_ = nullptr;
 	D3D12_COMMAND_QUEUE_DESC cmdQueueDesc = {};
 
 	// タイムアウト無し
@@ -235,14 +238,161 @@ void DX12::CreateCommandQueue(void)
 	// コマンドリストと合わせる
 	cmdQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	// キューの生成
-	auto result = dev_->CreateCommandQueue(&cmdQueueDesc, IID_PPV_ARGS(&cmdQueue));
+	auto result = dev_->CreateCommandQueue(&cmdQueueDesc, IID_PPV_ARGS(cmdQueue_.ReleaseAndGetAddressOf()));
 }
 
 void DX12::CreateFence(void)
 {
-	fence = nullptr;
-	fenceVal = 0;
+	fence_ = nullptr;
+	fenceVal_ = 0;
 
 	auto result = dev_->CreateFence(
-		fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+		fenceVal_, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence_.ReleaseAndGetAddressOf()));
+}
+
+void DX12::FailedShader(HRESULT result)
+{
+	if (FAILED(result))
+	{
+		if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+		{
+			OutputDebugStringA("ファイルが見当たりません");
+			return;
+		}
+	}
+	else
+	{
+		string errorstr;
+		errorstr.resize(errorBlob_->GetBufferSize());
+		copy_n((char*)errorBlob_->GetBufferPointer(),
+			errorBlob_->GetBufferSize(),
+			errorstr.begin());
+		errorstr += "\n";
+		OutputDebugStringA(errorstr.c_str());
+	}
+}
+
+void DX12::CreateVertices(void)
+{
+	// 頂点バッファーの生成
+	XMFLOAT3 vertices[] =
+	{
+		{-1.0f,-1.0f,0.0f}, // 左下
+		{-1.0f,1.0f,0.0f}, // 左上
+		{1.0f,-1.0f,0.0f}, // 右下
+	};
+
+	// 頂点ヒープの設定
+	D3D12_HEAP_PROPERTIES heapprop = {};
+	// ヒープの種類
+	heapprop.Type = D3D12_HEAP_TYPE_UPLOAD;
+	// CPUのページング設定
+	heapprop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	// メモリプールがどこかを示す
+	heapprop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+	// リソース設定
+	D3D12_RESOURCE_DESC resdesc = {};
+	// バッファで使うのでBUFFERを指定
+	resdesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	// 幅で全部まかなうのでsizeof(全頂点)とする
+	resdesc.Width = sizeof(vertices);
+	// 幅で表現しているので1とする
+	resdesc.Height = 1;
+	// １でよい
+	resdesc.DepthOrArraySize = 1;
+	// １でよい
+	resdesc.MipLevels = 1;
+	// 画像ではないのでUNKNOWNでよい
+	resdesc.Format = DXGI_FORMAT_UNKNOWN;
+	// SampleDesc.Count = 1とする
+	resdesc.SampleDesc.Count = 1;
+	// D3D12_TEXTURE_LAYOUT_ROW_MAJORとする
+	resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	// NONEでよい
+	resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	auto result = dev_->CreateCommittedResource(
+		&heapprop,
+		D3D12_HEAP_FLAG_NONE,
+		&resdesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(vertBuff_.ReleaseAndGetAddressOf()));
+
+	// 頂点情報のコピー
+	XMFLOAT3* vertMap = nullptr;
+
+	result = vertBuff_->Map(0, nullptr, (void**)&vertMap);
+
+	copy(begin(vertices), end(vertices), vertMap);
+
+	vertBuff_->Unmap(0, nullptr);
+
+	D3D12_VERTEX_BUFFER_VIEW vbView = {};
+	// バッファーの仮想アドレス
+	vbView.BufferLocation = vertBuff_->GetGPUVirtualAddress();
+	// 全バイト数
+	vbView.SizeInBytes = sizeof(vertices);
+	// １頂点あたりのバイト数
+	vbView.StrideInBytes = sizeof(vertices[0]);
+	// 頂点シェーダーの設定
+	result = D3DCompileFromFile(
+		L"Shader/VS.hlsl",														// シェーダー名
+		nullptr,																// defineはなし
+		D3D_COMPILE_STANDARD_FILE_INCLUDE,										// インクルードはデフォルト
+		"BasicVS", "vs_5_0",													// 関数はBaasicVS、対象シェーダーはvs_5_0
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,						// デバッグ用及び最適化なし
+		0,
+		vsBlob_.ReleaseAndGetAddressOf(), errorBlob_.ReleaseAndGetAddressOf());	// コンパイル成功時はvsBlob_に、失敗時はerrorBlob_に格納
+	// ピクセルシェーダーの設定
+	result = D3DCompileFromFile(
+		L"Shader/PS.hlsl",														// シェーダー名
+		nullptr,																// defineはなし
+		D3D_COMPILE_STANDARD_FILE_INCLUDE,										// インクルードはデフォルト
+		"BasicPS", "ps_5_0",													// 関数はBaasicVS、対象シェーダーはvs_5_0
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,						// デバッグ用及び最適化なし
+		0,
+		psBlob_.ReleaseAndGetAddressOf(), errorBlob_.ReleaseAndGetAddressOf());	// コンパイル成功時はpsBlob_に、失敗時はerrorBlob_に格納
+	//FailedShader(result);
+	// 頂点レイアウトの設定
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+	{
+		{
+			"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,
+			D3D12_APPEND_ALIGNED_ELEMENT,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
+		}
+	};
+	// グラフィックスパイプラインステートの作成
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
+	// あとで設定する
+	gpipeline.pRootSignature = nullptr;
+	// シェーダーのセット
+	// 頂点シェーダーの設定
+	gpipeline.VS.pShaderBytecode = vsBlob_->GetBufferPointer();
+	gpipeline.VS.BytecodeLength = vsBlob_->GetBufferSize();
+	// ピクセルシェーダーの設定
+	gpipeline.PS.pShaderBytecode = psBlob_->GetBufferPointer();
+	gpipeline.PS.BytecodeLength = psBlob_->GetBufferSize();
+	// サンプルマスクとラスタライザーステートの設定
+	// デフォルトのサンプルマスクを表す定数(0xffffffff)
+	gpipeline.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+	// アンチエイリアシングは使わないのでfalseにする
+	gpipeline.RasterizerState.MultisampleEnable = false;
+	// カリングしない
+	gpipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	// 中身を塗りつぶす
+	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	// 深度方向のクリッピングは有効に
+	gpipeline.RasterizerState.DepthClipEnable = true;
+	// ブレンドステートの設定
+	// 
+	gpipeline.BlendState.AlphaToCoverageEnable = false;
+	// 
+	gpipeline.BlendState.IndependentBlendEnable = false;
+	// 
+	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
+	renderTargetBlendDesc.BlendEnable = false;
+	renderTargetBlendDesc.LogicOpEnable = false;
 }

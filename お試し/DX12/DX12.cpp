@@ -107,8 +107,7 @@ void DX12::CreateFactory(HRESULT hr, UINT flagsDXGI)
 	{
 		return;
 	}
-	ComPtr<IDXGIAdapter> adapter;
-	hr = factory_->EnumAdapters(0, adapter.GetAddressOf());
+	hr = factory_->EnumAdapters(0, adapter_.GetAddressOf());
 	if (FAILED(hr))
 	{
 		return;
@@ -117,13 +116,31 @@ void DX12::CreateFactory(HRESULT hr, UINT flagsDXGI)
 
 void DX12::CreateDevice(HRESULT hr)
 {
-	// デバイス生成
-	ComPtr<IDXGIAdapter> adapter;
-	hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()));
-	if (FAILED(hr))
+	// デバイスの初期化
+	D3D_FEATURE_LEVEL levels[] = {
+	D3D_FEATURE_LEVEL_12_1,
+	D3D_FEATURE_LEVEL_12_0,
+	D3D_FEATURE_LEVEL_11_1,
+	D3D_FEATURE_LEVEL_11_0,
+	};
+
+	D3D_FEATURE_LEVEL featureLevel;
+
+	for (auto l : levels)
 	{
-		return;
+		if (D3D12CreateDevice(adapter_.Get(), l, IID_PPV_ARGS(device_.GetAddressOf())))
+		{
+			featureLevel = l;
+			break;
+		}
 	}
+
+	//// デバイス生成
+	//hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()));
+	//if (FAILED(hr))
+	//{
+	//	return;
+	//}
 }
 
 void DX12::CreateCommand(HRESULT hr)

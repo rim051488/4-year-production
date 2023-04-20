@@ -2,11 +2,18 @@
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
+#include <d3dcompiler.h>
+#include <directXMath.h>
+#include <wrl/client.h>
 
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
+#pragma comment(lib,"d3dcompiler.lib")
 
 using namespace std;
+using namespace DirectX;
+using namespace Microsoft::WRL;
+
 
 class DX12
 {
@@ -15,6 +22,8 @@ public:
 	~DX12(void);
 	// メインループでの処理
 	void Render(void);
+	// 頂点設定
+	void CreateVertices(void);
 
 private :
 	const unsigned int window_width = 1280;
@@ -23,24 +32,33 @@ private :
 	HWND hwnd_;
 
 	// デバイス
-	ID3D12Device* dev_;
+	//ID3D12Device* dev_;
+	ComPtr<ID3D12Device> dev_;
 	// ファクトリー
-	IDXGIFactory6* dxgiFactory_;
+	ComPtr<IDXGIFactory6> dxgiFactory_;
 	// スワップチェーン
-	IDXGISwapChain4* swapchain_;
+	ComPtr<IDXGISwapChain4> swapchain_;
 	// コマンドアロケーター
-	ID3D12CommandAllocator* cmdAllcator_;
+	ComPtr<ID3D12CommandAllocator> cmdAllcator_;
 	// コマンドリスト
-	ID3D12GraphicsCommandList* cmdList_;
+	ComPtr<ID3D12GraphicsCommandList> cmdList_;
 	// コマンドキュー
-	ID3D12CommandQueue* cmdQueue;
+	ComPtr<ID3D12CommandQueue> cmdQueue_;
 
-	ID3D12DescriptorHeap* rtvHeaps_;
-	vector<ID3D12Resource*> backBuffers_;
+	ComPtr<ID3D12DescriptorHeap> rtvHeaps_;
+	vector<ComPtr<ID3D12Resource>> backBuffers_;
 
 	// フェンス設定用変数
-	ID3D12Fence* fence;
-	UINT64 fenceVal;
+	ComPtr<ID3D12Fence> fence_;
+	UINT64 fenceVal_;
+
+	ComPtr<ID3D12Resource> vertBuff_;
+
+	// シェーダーオブジェクト保持用変数
+	ComPtr<ID3DBlob> vsBlob_;
+	ComPtr<ID3DBlob> psBlob_;
+	// エラー時に保持する変数
+	ComPtr<ID3DBlob> errorBlob_;
 
 	// デバイスの初期化
 	void CreateDvice(void);
@@ -52,9 +70,9 @@ private :
 	void CreateSwapChain(void);
 	// ディスクリプタヒープの初期化
 	void CreateDescriptor(void);
-	// スワップチェーンとメモリのひも付け
-	void SwapChainMemory(void);
 	// フェンスの設定
 	void CreateFence(void);
+	// シェーダー読み込み時に失敗したときの処理
+	void FailedShader(HRESULT result);
 };
 
