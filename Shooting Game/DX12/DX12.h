@@ -24,10 +24,12 @@ public:
 	void Render(void);
 	// 頂点設定
 	void CreateVertices(void);
-
-private :
+	
+private:
 	const unsigned int window_width = 1280;
 	const unsigned int window_height = 720;
+	// フレーム数
+	unsigned int frame;
 
 	HWND hwnd_;
 
@@ -52,7 +54,15 @@ private :
 	ComPtr<ID3D12Fence> fence_;
 	UINT64 fenceVal_;
 
+	// 頂点設定時用の変数
 	ComPtr<ID3D12Resource> vertBuff_;
+	D3D12_VERTEX_BUFFER_VIEW vbView_ = {};
+
+	// パイプラインステート用変数
+	ComPtr<ID3D12PipelineState> pipelinestate_;
+	// ルートシグネイチャ用の変数
+	ComPtr<ID3D12RootSignature> rootSig_;
+	ComPtr<ID3DBlob> rootSigBlob_;
 
 	// シェーダーオブジェクト保持用変数
 	ComPtr<ID3DBlob> vsBlob_;
@@ -74,5 +84,9 @@ private :
 	void CreateFence(void);
 	// シェーダー読み込み時に失敗したときの処理
 	void FailedShader(HRESULT result);
+	// ビューポートの設定
+	void CreateView(void);
+	// シザー矩形
+	void CreateScissor(void);
 };
 

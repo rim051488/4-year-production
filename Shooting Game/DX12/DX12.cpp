@@ -5,6 +5,7 @@
 DX12::DX12(HWND hwnd)
 {
 	hwnd_ = hwnd;
+	frame = 0;
 	// デバイスなどの初期化
 	CreateDvice();
 	CreateCommand();
@@ -44,8 +45,19 @@ void DX12::Render(void)
 	cmdList_->OMSetRenderTargets(1, &rtvH, false, nullptr);
 
 	// 画面クリア
-	float clearColor[] = { 1.0f,1.0f,0.0f,1.0f };// 黄色
+	float r, g, b;
+	r = (float)(0xff & frame >> 16) / 255.0f;
+	g = (float)(0xff & frame >> 8) / 255.0f;
+	b = (float)(0xff & frame >> 0) / 255.0f;
+	float clearColor[] = { 1.0f,0.0f,1.0f,1.0f };
 	cmdList_->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
+	++frame;
+
+	cmdList_->SetPipelineState(pipelinestate_.Get());
+	cmdList_->SetGraphicsRootSignature(rootSig_.Get());
+	cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList_->IASetVertexBuffers(0, 1, &vbView_);
+	cmdList_->DrawInstanced(3, 1, 0, 0);
 
 	// 前後だけを入れ替える
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -272,6 +284,36 @@ void DX12::FailedShader(HRESULT result)
 	}
 }
 
+void DX12::CreateView(void)
+{
+	D3D12_VIEWPORT viewport = {};
+	// 出力先の幅(ピクセル数)
+	viewport.Width = window_width;
+	// 出力先の高さ(ピクセル数)
+	viewport.Height = window_height;
+	// 出力先の左上座標X
+	viewport.TopLeftX = 0;
+	// 出力先の左上座標Y
+	viewport.TopLeftY = 0;
+	// 深度最大値
+	viewport.MaxDepth = 1.0f;
+	// 深度最小値
+	viewport.MinDepth = 0.0f;
+}
+
+void DX12::CreateScissor(void)
+{
+	D3D12_RECT scissorrect = {};
+	// 切り抜き上座標
+	scissorrect.top = 0;
+	// 切り抜き左座標
+	scissorrect.left = 0;
+	// 切り抜き右座標
+	scissorrect.right = scissorrect.left + window_width;
+	// 切り抜き下座標
+	scissorrect.bottom = scissorrect.top + window_height;
+}
+
 void DX12::CreateVertices(void)
 {
 	// 頂点バッファーの生成
@@ -308,9 +350,9 @@ void DX12::CreateVertices(void)
 	// SampleDesc.Count = 1とする
 	resdesc.SampleDesc.Count = 1;
 	// D3D12_TEXTURE_LAYOUT_ROW_MAJORとする
-	resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-	// NONEでよい
 	resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	// NONEでよい
+	resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
 	auto result = dev_->CreateCommittedResource(
 		&heapprop,
@@ -328,14 +370,12 @@ void DX12::CreateVertices(void)
 	copy(begin(vertices), end(vertices), vertMap);
 
 	vertBuff_->Unmap(0, nullptr);
-
-	D3D12_VERTEX_BUFFER_VIEW vbView = {};
 	// バッファーの仮想アドレス
-	vbView.BufferLocation = vertBuff_->GetGPUVirtualAddress();
+	vbView_.BufferLocation = vertBuff_->GetGPUVirtualAddress();
 	// 全バイト数
-	vbView.SizeInBytes = sizeof(vertices);
+	vbView_.SizeInBytes = sizeof(vertices);
 	// １頂点あたりのバイト数
-	vbView.StrideInBytes = sizeof(vertices[0]);
+	vbView_.StrideInBytes = sizeof(vertices[0]);
 	// 頂点シェーダーの設定
 	result = D3DCompileFromFile(
 		L"Shader/VS.hlsl",														// シェーダー名
@@ -366,8 +406,18 @@ void DX12::CreateVertices(void)
 	};
 	// グラフィックスパイプラインステートの作成
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
-	// あとで設定する
-	gpipeline.pRootSignature = nullptr;
+	// ルートシグネイチャーの設定
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	result = D3D12SerializeRootSignature(&rootSignatureDesc,	// ルートシグネイチャ設定
+		D3D_ROOT_SIGNATURE_VERSION_1_0,							// ルートシグネイチャのバージョン
+		rootSigBlob_.ReleaseAndGetAddressOf(),
+		errorBlob_.ReleaseAndGetAddressOf());
+	result = dev_->CreateRootSignature(0,
+		rootSigBlob_->GetBufferPointer(),
+		rootSigBlob_->GetBufferSize(),
+		IID_PPV_ARGS(rootSig_.ReleaseAndGetAddressOf()));
+	gpipeline.pRootSignature = rootSig_.Get();
 	// シェーダーのセット
 	// 頂点シェーダーの設定
 	gpipeline.VS.pShaderBytecode = vsBlob_->GetBufferPointer();
@@ -394,5 +444,31 @@ void DX12::CreateVertices(void)
 	// 
 	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
 	renderTargetBlendDesc.BlendEnable = false;
+	renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	// 論理演算は使用しない
 	renderTargetBlendDesc.LogicOpEnable = false;
+	gpipeline.BlendState.RenderTarget[0] = renderTargetBlendDesc;
+	// 入力レイアウトの設定
+	// レイアウト先頭アドレス
+	gpipeline.InputLayout.pInputElementDescs = inputLayout;
+	//レイアウト配列の要素数
+	gpipeline.InputLayout.NumElements = _countof(inputLayout);
+	// カットなし
+	gpipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+	// 三角形で構成
+	gpipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	// レンダーターゲットの設定
+	// 今は１つのみ
+	gpipeline.NumRenderTargets = 1;
+	// ０～１に正規化されたRGBA
+	gpipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	// サンプル数設定
+	// サンプリングは１ピクセルにつき１
+	gpipeline.SampleDesc.Count = 1;
+	// クオリティーは最低
+	gpipeline.SampleDesc.Quality = 0;
+	// グラフィックスパイプラインステートオブジェクトの生成
+	result = dev_->CreateGraphicsPipelineState(&gpipeline, IID_PPV_ARGS(pipelinestate_.ReleaseAndGetAddressOf()));
+	CreateView();
+	CreateScissor();
 }
