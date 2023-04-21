@@ -413,6 +413,7 @@ void DX12::CreateVertices(void)
 		D3D_ROOT_SIGNATURE_VERSION_1_0,							// ルートシグネイチャのバージョン
 		rootSigBlob_.ReleaseAndGetAddressOf(),
 		errorBlob_.ReleaseAndGetAddressOf());
+
 	result = dev_->CreateRootSignature(0,
 		rootSigBlob_->GetBufferPointer(),
 		rootSigBlob_->GetBufferSize(),
