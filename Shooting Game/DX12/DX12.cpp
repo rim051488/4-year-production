@@ -46,18 +46,24 @@ void DX12::Render(void)
 
 	// 画面クリア
 	float r, g, b;
-	r = (float)(0xff & frame >> 16) / 255.0f;
-	g = (float)(0xff & frame >> 8) / 255.0f;
-	b = (float)(0xff & frame >> 0) / 255.0f;
-	float clearColor[] = { 1.0f,0.0f,1.0f,1.0f };
+	r = 255/*(float)(0xff & frame >> 16) / 255.0f*/;
+	g = 0/*(float)(0xff & frame >> 8) / 255.0f*/;
+	b = 0/*(float)(0xff & frame >> 0) / 255.0f*/;
+	float clearColor[] = { r,g,b,1.0f };
 	cmdList_->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 	++frame;
-
+	cmdList_->RSSetViewports(1, &viewport_);
+	cmdList_->RSSetScissorRects(1, &scissorrect_);
 	cmdList_->SetPipelineState(pipelinestate_.Get());
 	cmdList_->SetGraphicsRootSignature(rootSig_.Get());
-	cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	//cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	 cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	cmdList_->IASetVertexBuffers(0, 1, &vbView_);
-	cmdList_->DrawInstanced(3, 1, 0, 0);
+	cmdList_->IASetIndexBuffer(&ibVIew_);
+	// インデックスを使用する場合
+	//cmdList_->DrawIndexedInstanced(6, 1, 0, 0, 0);
+	cmdList_->DrawInstanced(4, 1, 0, 0);
+
 
 	// 前後だけを入れ替える
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -286,42 +292,50 @@ void DX12::FailedShader(HRESULT result)
 
 void DX12::CreateView(void)
 {
-	D3D12_VIEWPORT viewport = {};
 	// 出力先の幅(ピクセル数)
-	viewport.Width = window_width;
+	viewport_.Width = window_width;
 	// 出力先の高さ(ピクセル数)
-	viewport.Height = window_height;
+	viewport_.Height = window_height;
 	// 出力先の左上座標X
-	viewport.TopLeftX = 0;
+	viewport_.TopLeftX = 0;
 	// 出力先の左上座標Y
-	viewport.TopLeftY = 0;
+	viewport_.TopLeftY = 0;
 	// 深度最大値
-	viewport.MaxDepth = 1.0f;
+	viewport_.MaxDepth = 1.0f;
 	// 深度最小値
-	viewport.MinDepth = 0.0f;
+	viewport_.MinDepth = 0.0f;
 }
 
 void DX12::CreateScissor(void)
 {
-	D3D12_RECT scissorrect = {};
 	// 切り抜き上座標
-	scissorrect.top = 0;
+	scissorrect_.top = 0;
 	// 切り抜き左座標
-	scissorrect.left = 0;
+	scissorrect_.left = 0;
 	// 切り抜き右座標
-	scissorrect.right = scissorrect.left + window_width;
+	scissorrect_.right = scissorrect_.left + window_width;
 	// 切り抜き下座標
-	scissorrect.bottom = scissorrect.top + window_height;
+	scissorrect_.bottom = scissorrect_.top + window_height;
 }
 
 void DX12::CreateVertices(void)
 {
-	// 頂点バッファーの生成
-	XMFLOAT3 vertices[] =
+	// 頂点データ構造体
+	struct Vertex
 	{
-		{-1.0f,-1.0f,0.0f}, // 左下
-		{-1.0f,1.0f,0.0f}, // 左上
-		{1.0f,-1.0f,0.0f}, // 右下
+		// xyz座標
+		XMFLOAT3 pos;
+		// uv座標
+		XMFLOAT2 uv;
+	};
+
+	// 頂点バッファーの生成
+	Vertex vertices[] =
+	{
+		{{-0.4f,-0.7f,0.0f},{0.0f,1.0f}},	// 左下
+		{{-0.4f,0.7f,0.0f},{0.0f,0.0f}},	// 左上
+		{{0.4f,-0.7f,0.0f},{1.0f,1.0f}},	// 右下
+		{{0.4f,0.7f,0.0f},{1.0f,0.0f}},		// 右上
 	};
 
 	// 頂点ヒープの設定
@@ -363,7 +377,7 @@ void DX12::CreateVertices(void)
 		IID_PPV_ARGS(vertBuff_.ReleaseAndGetAddressOf()));
 
 	// 頂点情報のコピー
-	XMFLOAT3* vertMap = nullptr;
+	Vertex* vertMap = nullptr;
 
 	result = vertBuff_->Map(0, nullptr, (void**)&vertMap);
 
@@ -376,6 +390,32 @@ void DX12::CreateVertices(void)
 	vbView_.SizeInBytes = sizeof(vertices);
 	// １頂点あたりのバイト数
 	vbView_.StrideInBytes = sizeof(vertices[0]);
+
+	//// インデックスの生成
+	//unsigned short indices[] =
+	//{
+	//	0,1,2,
+	//	2,1,3
+	//};
+	//ID3D12Resource* idxBuff = nullptr;
+	//// 設定は、バッファのサイズ以外、頂点バッファの設定を使いまわしできる
+	//result = dev_->CreateCommittedResource(
+	//	&heapprop,
+	//	D3D12_HEAP_FLAG_NONE,
+	//	&resdesc,
+	//	D3D12_RESOURCE_STATE_GENERIC_READ,
+	//	nullptr,
+	//	IID_PPV_ARGS(&idxBuff));
+	//// 作ったバッファにインデックスデータをコピー
+	//unsigned short* mappedIdx = nullptr;
+	//idxBuff->Map(0, nullptr, (void**)&mappedIdx);
+	//copy(begin(indices), end(indices), mappedIdx);
+	//idxBuff->Unmap(0, nullptr);
+	//// インデックスバッファービューを作成
+	//ibVIew_.BufferLocation = idxBuff->GetGPUVirtualAddress();
+	//ibVIew_.Format = DXGI_FORMAT_R16_UINT;
+	//ibVIew_.SizeInBytes = sizeof(indices);
+
 	// 頂点シェーダーの設定
 	result = D3DCompileFromFile(
 		L"Shader/VS.hlsl",														// シェーダー名
@@ -398,27 +438,22 @@ void DX12::CreateVertices(void)
 	// 頂点レイアウトの設定
 	D3D12_INPUT_ELEMENT_DESC inputLayout[] =
 	{
-		{
+		{ // 座標情報
 			"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,
 			D3D12_APPEND_ALIGNED_ELEMENT,
 			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
-		}
+		},
+		{ // uv(追加)
+			"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,
+			0,D3D12_APPEND_ALIGNED_ELEMENT,
+			D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0
+		},
 	};
 	// グラフィックスパイプラインステートの作成
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
 	// ルートシグネイチャーの設定
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
-	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	result = D3D12SerializeRootSignature(&rootSignatureDesc,	// ルートシグネイチャ設定
-		D3D_ROOT_SIGNATURE_VERSION_1_0,							// ルートシグネイチャのバージョン
-		rootSigBlob_.ReleaseAndGetAddressOf(),
-		errorBlob_.ReleaseAndGetAddressOf());
-
-	result = dev_->CreateRootSignature(0,
-		rootSigBlob_->GetBufferPointer(),
-		rootSigBlob_->GetBufferSize(),
-		IID_PPV_ARGS(rootSig_.ReleaseAndGetAddressOf()));
-	gpipeline.pRootSignature = rootSig_.Get();
+	gpipeline.pRootSignature = nullptr;
 	// シェーダーのセット
 	// 頂点シェーダーの設定
 	gpipeline.VS.pShaderBytecode = vsBlob_->GetBufferPointer();
@@ -437,18 +472,18 @@ void DX12::CreateVertices(void)
 	gpipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 	// 深度方向のクリッピングは有効に
 	gpipeline.RasterizerState.DepthClipEnable = true;
+
 	// ブレンドステートの設定
-	// 
 	gpipeline.BlendState.AlphaToCoverageEnable = false;
-	// 
 	gpipeline.BlendState.IndependentBlendEnable = false;
-	// 
+
 	D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
 	renderTargetBlendDesc.BlendEnable = false;
 	renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	// 論理演算は使用しない
 	renderTargetBlendDesc.LogicOpEnable = false;
 	gpipeline.BlendState.RenderTarget[0] = renderTargetBlendDesc;
+	
 	// 入力レイアウトの設定
 	// レイアウト先頭アドレス
 	gpipeline.InputLayout.pInputElementDescs = inputLayout;
@@ -468,8 +503,53 @@ void DX12::CreateVertices(void)
 	gpipeline.SampleDesc.Count = 1;
 	// クオリティーは最低
 	gpipeline.SampleDesc.Quality = 0;
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	result = D3D12SerializeRootSignature(&rootSignatureDesc,	// ルートシグネイチャ設定
+		D3D_ROOT_SIGNATURE_VERSION_1_0,							// ルートシグネイチャのバージョン
+		rootSigBlob_.ReleaseAndGetAddressOf(),
+		errorBlob_.ReleaseAndGetAddressOf());
+
+	result = dev_->CreateRootSignature(0,
+		rootSigBlob_->GetBufferPointer(),
+		rootSigBlob_->GetBufferSize(),
+		IID_PPV_ARGS(rootSig_.ReleaseAndGetAddressOf()));
+	gpipeline.pRootSignature = rootSig_.Get();
+
 	// グラフィックスパイプラインステートオブジェクトの生成
 	result = dev_->CreateGraphicsPipelineState(&gpipeline, IID_PPV_ARGS(pipelinestate_.ReleaseAndGetAddressOf()));
 	CreateView();
 	CreateScissor();
+	// テクスチャデータの作成
+	vector<TexRGBA> texturedata(256 * 256);
+	for (auto& rgba : texturedata)
+	{
+		rgba.R = rand() % 256;
+		rgba.G = rand() % 256;
+		rgba.B = rand() % 256;
+		rgba.A = 256;
+	}
+	// WriteToSubresourceで転送するためのヒープ設定
+	D3D12_HEAP_PROPERTIES HeapProp = {};
+	// 特殊な設定なのでDEFAULTでもUPLOADでもない
+	HeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	// ライトバック
+	HeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	// 転送はL0、つまりCPU側から直接行う
+	HeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	// 単一アダプターのための0
+	HeapProp.CreationNodeMask = 0;
+	HeapProp.VisibleNodeMask = 0;
+	// リソース設定
+	D3D12_RESOURCE_DESC resDesc = {};
+	// RGBAフォーマット
+	resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	// 幅
+	resDesc.Width = 256;
+	// 高さ
+	resDesc.Height = 256;
+	// 2Dで配列でもないので1
+	resDesc.DepthOrArraySize = 1;
+	// 通常テクスチャなのでアンチエイリアシングしない
+	resDesc.SampleDesc.Count = 1;
+
 }

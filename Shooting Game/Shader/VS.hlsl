@@ -1,4 +1,15 @@
-float4 BasicVS( float4 pos : POSITION ) : SV_POSITION
+struct Output
 {
-	return pos;
+    float4 pos : POSITION;
+    float2 uv : TEXCOORD;
+    float4 svpos : SV_POSITION;
+};
+
+Output BasicVS(float4 pos : POSITION,float2 uv : TEXCOORD)
+{
+    Output output;
+    output.pos = pos;
+    output.uv = uv;
+    output.svpos = pos;
+    return output;
 }

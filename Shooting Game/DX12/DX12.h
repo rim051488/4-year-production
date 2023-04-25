@@ -14,6 +14,10 @@ using namespace std;
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
+struct TexRGBA
+{
+	unsigned char R, G, B, A;
+};
 
 class DX12
 {
@@ -69,6 +73,13 @@ private:
 	ComPtr<ID3DBlob> psBlob_;
 	// エラー時に保持する変数
 	ComPtr<ID3DBlob> errorBlob_;
+
+	// ビューポート用変数
+	D3D12_VIEWPORT viewport_ = {};
+	// シザー矩形用変数
+	D3D12_RECT scissorrect_ = {};
+	// インデックスの用変数
+	D3D12_INDEX_BUFFER_VIEW ibVIew_ = {};
 
 	// デバイスの初期化
 	void CreateDvice(void);
