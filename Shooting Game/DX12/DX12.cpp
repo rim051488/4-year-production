@@ -504,6 +504,40 @@ void DX12::CreateVertices(void)
 	// クオリティーは最低
 	gpipeline.SampleDesc.Quality = 0;
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	D3D12_ROOT_PARAMETER rootparam = {};
+	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	// ピクセルシェーダーから見える
+	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_DESCRIPTOR_RANGE descTblRange = {};
+	// テクスチャ１つ
+	descTblRange.NumDescriptors = 1;
+	// 種別はテクスチャ
+	descTblRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	// 0番スロットから
+	descTblRange.BaseShaderRegister = 0;
+	descTblRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER rootparam = {};
+
+	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	// ピクセルシェーダーから見える
+	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	// ディスクリプタレンジのアドレス
+	rootparam.DescriptorTable.pDescriptorRanges = &descTblRange;
+	// ディスクリプタレンジ数
+	rootparam.DescriptorTable.NumDescriptorRanges = 1;
+	// ルートパラメーターの先頭アドレス
+	rootSignatureDesc.pParameters = &rootparam;
+	// ルートパラメーター数
+	rootSignatureDesc.NumParameters = 1;
+
+	// サンプラーの設定
+	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+	// 横方向の繰り返し
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+
 	result = D3D12SerializeRootSignature(&rootSignatureDesc,	// ルートシグネイチャ設定
 		D3D_ROOT_SIGNATURE_VERSION_1_0,							// ルートシグネイチャのバージョン
 		rootSigBlob_.ReleaseAndGetAddressOf(),
@@ -551,5 +585,53 @@ void DX12::CreateVertices(void)
 	resDesc.DepthOrArraySize = 1;
 	// 通常テクスチャなのでアンチエイリアシングしない
 	resDesc.SampleDesc.Count = 1;
-
+	// クオリティーは最低
+	resDesc.SampleDesc.Quality = 0;
+	// ミップマップしないのでミップ数は１つ
+	resDesc.MipLevels = 1;
+	// 2Dテクスチャ用
+	resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	// レイアウトは決定しない
+	resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	// 特にフラグなし
+	resDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	result = dev_->CreateCommittedResource(
+		&HeapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(texbuff_.ReleaseAndGetAddressOf()));
+	result = texbuff_->WriteToSubresource(
+		0,										// サブリソースインデックス
+		nullptr,								// 全領域へのコピー
+		texturedata.data(),						// 元データアドレス
+		sizeof(TexRGBA) * 256,					// １ラインサイズ
+		sizeof(TexRGBA) * texturedata.size()	// 全サイズ
+	);
+	D3D12_DESCRIPTOR_HEAP_DESC descHeapDesc = {};
+	// シェーダーから見えるように
+	descHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	// マスクは0
+	descHeapDesc.NodeMask = 0;
+	// ビューは今のところ１つだけ
+	descHeapDesc.NumDescriptors = 1;
+	// シェーダーリソースビュー用
+	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	// 生成
+	result = dev_->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(texDescHeap.ReleaseAndGetAddressOf()));
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	// RGBA
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	// 
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	// 2Dテクスチャ
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	// ミップマップは使用しないので１
+	srvDesc.Texture2D.MipLevels = 1;
+	dev_->CreateShaderResourceView(
+		texbuff_.Get(),										// ビューと関連付けるバッファー
+		&srvDesc,											// 設定したテクスチャ設定情報
+		texDescHeap->GetCPUDescriptorHandleForHeapStart()	// ヒープのどこに割り当てるか
+	);
 }

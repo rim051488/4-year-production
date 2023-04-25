@@ -68,6 +68,11 @@ private:
 	ComPtr<ID3D12RootSignature> rootSig_;
 	ComPtr<ID3DBlob> rootSigBlob_;
 
+	// テクスチャ用変数
+	ComPtr<ID3D12Resource> texbuff_;
+	// テクスチャ用のディスクリプタヒープ変数
+	ComPtr<ID3D12DescriptorHeap> texDescHeap = nullptr;
+
 	// シェーダーオブジェクト保持用変数
 	ComPtr<ID3DBlob> vsBlob_;
 	ComPtr<ID3DBlob> psBlob_;
