@@ -71,7 +71,8 @@ private:
 	// テクスチャ用変数
 	ComPtr<ID3D12Resource> texbuff_;
 	// テクスチャ用のディスクリプタヒープ変数
-	ComPtr<ID3D12DescriptorHeap> texDescHeap = nullptr;
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	ID3D12DescriptorHeap* texDescHeap = nullptr;
 
 	// シェーダーオブジェクト保持用変数
 	ComPtr<ID3DBlob> vsBlob_;

@@ -16,6 +16,8 @@ DX12::DX12(HWND hwnd)
 
 DX12::~DX12(void)
 {
+	// テクスチャディスクリプタの初期化
+	texDescHeap->Release();
 }
 
 void DX12::Render(void)
@@ -56,6 +58,7 @@ void DX12::Render(void)
 	cmdList_->RSSetScissorRects(1, &scissorrect_);
 	cmdList_->SetPipelineState(pipelinestate_.Get());
 	cmdList_->SetGraphicsRootSignature(rootSig_.Get());
+	cmdList_->SetDescriptorHeaps(1,  &texDescHeap);
 	//cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	 cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	cmdList_->IASetVertexBuffers(0, 1, &vbView_);
@@ -64,6 +67,9 @@ void DX12::Render(void)
 	//cmdList_->DrawIndexedInstanced(6, 1, 0, 0, 0);
 	cmdList_->DrawInstanced(4, 1, 0, 0);
 
+	cmdList_->SetGraphicsRootDescriptorTable(
+		0,// ルートパラメーターインデックス
+		texDescHeap->GetGPUDescriptorHandleForHeapStart());// ヒープアドレス
 
 	// 前後だけを入れ替える
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -452,7 +458,6 @@ void DX12::CreateVertices(void)
 	// グラフィックスパイプラインステートの作成
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC gpipeline = {};
 	// ルートシグネイチャーの設定
-	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	gpipeline.pRootSignature = nullptr;
 	// シェーダーのセット
 	// 頂点シェーダーの設定
@@ -503,12 +508,8 @@ void DX12::CreateVertices(void)
 	gpipeline.SampleDesc.Count = 1;
 	// クオリティーは最低
 	gpipeline.SampleDesc.Quality = 0;
-	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-	D3D12_ROOT_PARAMETER rootparam = {};
-	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	// ピクセルシェーダーから見える
-	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
 	D3D12_DESCRIPTOR_RANGE descTblRange = {};
 	// テクスチャ１つ
@@ -518,9 +519,9 @@ void DX12::CreateVertices(void)
 	// 0番スロットから
 	descTblRange.BaseShaderRegister = 0;
 	descTblRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-
+	
 	D3D12_ROOT_PARAMETER rootparam = {};
-
+	// ピクセルシェーダーから見える
 	rootparam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	// ピクセルシェーダーから見える
 	rootparam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -537,6 +538,25 @@ void DX12::CreateVertices(void)
 	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
 	// 横方向の繰り返し
 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	// 縦方向の繰り返し
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	// 奥方向の繰り返し
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	// ボーダーは黒
+	samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+	// 線形保管
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	// ミップマップ最大値
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	// ミップマップ最小値
+	samplerDesc.MinLOD = 0.0f;
+	// ピクセルシェーダーから見える
+	samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	// リサンプリングしない
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+
+	rootSignatureDesc.pStaticSamplers = &samplerDesc;
+	rootSignatureDesc.NumStaticSamplers = 1;
 
 	result = D3D12SerializeRootSignature(&rootSignatureDesc,	// ルートシグネイチャ設定
 		D3D_ROOT_SIGNATURE_VERSION_1_0,							// ルートシグネイチャのバージョン
@@ -619,7 +639,7 @@ void DX12::CreateVertices(void)
 	// シェーダーリソースビュー用
 	descHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	// 生成
-	result = dev_->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(texDescHeap.ReleaseAndGetAddressOf()));
+	result = dev_->CreateDescriptorHeap(&descHeapDesc, IID_PPV_ARGS(&texDescHeap));
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	// RGBA
 	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -634,4 +654,10 @@ void DX12::CreateVertices(void)
 		&srvDesc,											// 設定したテクスチャ設定情報
 		texDescHeap->GetCPUDescriptorHandleForHeapStart()	// ヒープのどこに割り当てるか
 	);
+
+	dev_->CreateShaderResourceView(texbuff_.Get(), //ビューと関連付けるバッファ
+		&srvDesc, //先ほど設定したテクスチャ設定情報
+		texDescHeap->GetCPUDescriptorHandleForHeapStart()//ヒープのどこに割り当てるか
+	);
+
 }
