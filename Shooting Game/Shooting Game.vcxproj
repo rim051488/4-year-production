@@ -78,9 +78,13 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(D3DX12_DIR);$(DXTEX_DIR);$(IncludePath)</IncludePath>
+    <LibraryPath>$(D3DX12_DIR);$(DXTEX_DIR)/Bin/Desktop_2022_Win10/x64/Debug;$(DXTEX_DIR)/Bin/Desktop_2022_Win10/x64/Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>$(D3DX12_DIR);$(DXTEX_DIR);$(IncludePath)</IncludePath>
+    <LibraryPath>$(D3DX12_DIR);$(DXTEX_DIR)/Bin/Desktop_2022_Win10/x64/Debug;$(DXTEX_DIR)/Bin/Desktop_2022_Win10/x64/Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

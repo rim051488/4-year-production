@@ -5,10 +5,13 @@
 #include <d3dcompiler.h>
 #include <directXMath.h>
 #include <wrl/client.h>
+#include <DirectXTex.h>
+#include <d3dx12.h>
 
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
 #pragma comment(lib,"d3dcompiler.lib")
+#pragma comment(lib,"DirectXTex.lib")
 
 using namespace std;
 using namespace DirectX;
@@ -17,6 +20,28 @@ using namespace Microsoft::WRL;
 struct TexRGBA
 {
 	unsigned char R, G, B, A;
+};
+
+struct Wave
+{
+	XMFLOAT2 dir;
+	float amplitude;
+	float waveLenght;
+};
+
+struct cbuff
+{
+	XMMATRIX matrix;
+	Wave waves[100];
+};
+
+// PMDヘッダ構造体
+struct PMDHeader {
+	float version;
+	// モデルの名前
+	char model_name[20];
+	// モデルのコメント
+	char comment[256];
 };
 
 class DX12
@@ -34,6 +59,8 @@ private:
 	const unsigned int window_height = 720;
 	// フレーム数
 	unsigned int frame;
+	// モデルの１頂点当たりのサイズ
+	const size_t pmdvertexSize_ = 38;
 
 	HWND hwnd_;
 
@@ -80,12 +107,33 @@ private:
 	// エラー時に保持する変数
 	ComPtr<ID3DBlob> errorBlob_;
 
+	// 定数バッファの変数
+	ComPtr<ID3D12Resource> constBuff_;
+	// 行列変数
+	// マップ先を示すポインター
+	XMMATRIX* mapMatrix_;
+	cbuff* mapBuff_;
+	ID3D12DescriptorHeap* basicDescHeap_ = nullptr;
+	// お試しアニメーション
+	float angle;
+	XMMATRIX worldMat;
+	XMMATRIX viewMat;
+	XMMATRIX projMat;
+
 	// ビューポート用変数
 	D3D12_VIEWPORT viewport_ = {};
 	// シザー矩形用変数
 	D3D12_RECT scissorrect_ = {};
 	// インデックスの用変数
 	D3D12_INDEX_BUFFER_VIEW ibVIew_ = {};
+
+	// モデルの読み込み用変数
+	// シグネチャ
+	char signature_[3] = {};
+	PMDHeader pmdHeader = {};
+	// 頂点数
+	unsigned int vertNum_;
+	vector<unsigned char> vertices_;
 
 	// デバイスの初期化
 	void CreateDvice(void);
@@ -105,5 +153,7 @@ private:
 	void CreateView(void);
 	// シザー矩形
 	void CreateScissor(void);
+	// モデルのロード
+	void LoadModel(void);
 };
 
