@@ -24,15 +24,16 @@ struct Wave
 cbuffer cbuff : register(b0)
 {
     // ïœä∑çsóÒ
-    matrix mat_;
+    matrix worldMat;
+    matrix viewMat;
     Wave waves[100];
 }
 
-Output BasicVS(float4 pos : POSITION, float4 norm : NORMAL, float2 uv : TEXCOORD, min16uint2 boneno : BONE_NO, min16uint weight : WEIGHT)
+Output BasicVS(Input input)
 {
     Output output;    
-    output.pos = mul(mat_, pos);
-    output.uv = uv;
-    output.svpos = mul(mat_, pos);
+    output.pos = mul(mul(worldMat,viewMat),input.pos);
+    output.uv = input.uv;
+    output.svpos = mul(mul(worldMat, viewMat), input.pos);
     return output;
 }

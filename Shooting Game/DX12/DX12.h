@@ -31,7 +31,8 @@ struct Wave
 
 struct cbuff
 {
-	XMMATRIX matrix;
+	XMMATRIX worldMat;
+	XMMATRIX viewMat;
 	Wave waves[100];
 };
 
@@ -43,6 +44,19 @@ struct PMDHeader {
 	// モデルのコメント
 	char comment[256];
 };
+
+// 頂点データ構造体
+struct PMD_VERTEX
+{
+	XMFLOAT3 pos;
+	XMFLOAT3 normal;
+	XMFLOAT2 uv;
+	uint16_t bone_no[2];
+	uint8_t  weight;
+	uint8_t  EdgeFlag;
+	uint16_t dummy;
+};
+
 
 class DX12
 {
@@ -133,7 +147,11 @@ private:
 	PMDHeader pmdHeader = {};
 	// 頂点数
 	unsigned int vertNum_;
-	vector<unsigned char> vertices_;
+	vector<PMD_VERTEX> vertices_;
+	// インデックス数
+	unsigned int indicesNum;
+	vector<unsigned short> indices_;
+	ComPtr<ID3D12Resource> idxBuff_;
 
 	// デバイスの初期化
 	void CreateDvice(void);

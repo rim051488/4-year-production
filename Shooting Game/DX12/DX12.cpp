@@ -69,12 +69,12 @@ void DX12::Render(void)
 	cmdList_->SetGraphicsRootDescriptorTable(
 		0,// ルートパラメーターインデックス
 		basicDescHeap_->GetGPUDescriptorHandleForHeapStart());// ヒープアドレス
-	cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+	cmdList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList_->IASetVertexBuffers(0, 1, &vbView_);
 	cmdList_->IASetIndexBuffer(&ibVIew_);
 	// インデックスを使用する場合
 	//cmdList_->DrawIndexedInstanced(6, 1, 0, 0, 0);
-	cmdList_->DrawInstanced(vertNum_, 1, 0, 0);
+	cmdList_->DrawInstanced(indicesNum, 1, 0, 0);
 
 	// 前後だけを入れ替える
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -338,57 +338,85 @@ void DX12::CreateScissor(void)
 void DX12::LoadModel(void)
 {
 	FILE* fp;
-	fopen_s(&fp, "Resource/Model/Model/初音ミク.pmd", "rb");
+	auto error = fopen_s(&fp, "Resource/Model/Model/初音ミク.pmd", "rb");
+	if (fp == nullptr)
+	{
+		char strerror[256];
+		strerror_s(strerror, 256, error);
+		MessageBox(hwnd_, strerror, "Open Error", MB_ICONERROR);
+		return;
+	}
 	fread(signature_, sizeof(signature_), 1, fp);
 	fread(&pmdHeader, sizeof(pmdHeader), 1, fp);
+
 	fread(&vertNum_, sizeof(vertNum_), 1, fp);
 	// バッファーの確保
-	vertices_.resize(vertNum_ * pmdvertexSize_);
-	// 読み込み
-	fread(vertices_.data(), vertices_.size(), 1, fp);
-}
-
-void DX12::CreateVertices(void)
-{
-	// 頂点データ構造体
-	struct Vertex
+	vertices_.resize(vertNum_);
+	// 頂点の読み込み
+	for (auto i = 0; i < vertNum_; i++)
 	{
-		// xyz座標
-		XMFLOAT3 pos;
-		// uv座標
-		XMFLOAT2 uv;
-	};
-
-	LoadModel();
-
-	auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	auto resdec = CD3DX12_RESOURCE_DESC::Buffer(vertices_.size());
+		fread(&vertices_[i], pmdvertexSize_, 1, fp);
+	}
+	//// 頂点の読み込み
+	//fread(vertices_.data(), vertices_.size(), 1, fp);
+	// インデックス数
+	fread(&indicesNum, sizeof(indicesNum), 1, fp);
+	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertices_.size() * sizeof(PMD_VERTEX));
 
 	auto result = dev_->CreateCommittedResource(
-		&heap,
+		&heapProp,
 		D3D12_HEAP_FLAG_NONE,
-		&resdec,
+		&resDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
 		IID_PPV_ARGS(vertBuff_.ReleaseAndGetAddressOf()));
 
 	// 頂点情報のコピー
-	unsigned char* vertMap = nullptr;
-
+	PMD_VERTEX* vertMap = nullptr;
 	result = vertBuff_->Map(0, nullptr, (void**)&vertMap);
-
 	copy(begin(vertices_), end(vertices_), vertMap);
-
 	vertBuff_->Unmap(0, nullptr);
+
 	// バッファーの仮想アドレス
 	vbView_.BufferLocation = vertBuff_->GetGPUVirtualAddress();
 	// 全バイト数
-	vbView_.SizeInBytes = vertices_.size();
+	vbView_.SizeInBytes = static_cast<UINT>(vertices_.size() * sizeof(PMD_VERTEX));
 	// １頂点あたりのバイト数
-	vbView_.StrideInBytes = pmdvertexSize_;
+	vbView_.StrideInBytes = sizeof(PMD_VERTEX);
+
+	// モデルのインデックス情報を
+	// インデックス
+	indices_.resize(indicesNum);
+	fread(indices_.data(), indices_.size() * sizeof(indices_[0]), 1, fp);
+	fclose(fp);
+	heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	resDesc = CD3DX12_RESOURCE_DESC::Buffer(indices_.size() * sizeof(indices_[0]));
+
+	result = dev_->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(idxBuff_.ReleaseAndGetAddressOf()));
+	// インデックスデータをコピー
+	unsigned short* mappedIdx = nullptr;
+	idxBuff_->Map(0, nullptr, (void**)&mappedIdx);
+	copy(indices_.begin(), indices_.end(), mappedIdx);
+	idxBuff_->Unmap(0, nullptr);
+	// インデックスバッファビューを作成
+	ibVIew_.BufferLocation = idxBuff_->GetGPUVirtualAddress();
+	ibVIew_.Format = DXGI_FORMAT_R16_UINT;
+	ibVIew_.SizeInBytes = static_cast<UINT>(indices_.size() * sizeof(indices_[0]));
+}
+
+void DX12::CreateVertices(void)
+{
+	LoadModel();
 
 	// 頂点シェーダーの設定
-	result = D3DCompileFromFile(
+	auto result = D3DCompileFromFile(
 		L"Shader/VS.hlsl",														// シェーダー名
 		nullptr,																// defineはなし
 		D3D_COMPILE_STANDARD_FILE_INCLUDE,										// インクルードはデフォルト
@@ -619,8 +647,7 @@ void DX12::CreateVertices(void)
 		img->slicePitch							// 全サイズ
 	);
 	// 定数バッファの作成
-	//XMMATRIX matrix = XMMatrixIdentity();
-	worldMat = XMMatrixRotationY(0.0f);
+	worldMat = XMMatrixIdentity();
 	//worldMat = XMMatrixRotationY(XM_PIDIV4);
 	// 目の位置
 	XMFLOAT3 eye(0.0f, 10.0f, -15.0f);
@@ -633,7 +660,7 @@ void DX12::CreateVertices(void)
 		XM_PIDIV2,																// 画角は90度
 		static_cast<float>(window_width) / static_cast<float>(window_height),	// アスペクト比
 		1.0f,																	// 近いほう
-		10.0f);																	// 遠いほう
+		100.0f);																	// 遠いほう
 
 	auto buffheap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto buffdesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(cbuff) + 0xff) & ~0xff);
@@ -648,7 +675,8 @@ void DX12::CreateVertices(void)
 	// マップ
 	result = constBuff_->Map(0, nullptr, (void**)&mapBuff_);
 	// 行列の内容をコピー
-	mapBuff_->matrix = worldMat * viewMat * projMat;
+	mapBuff_->worldMat = worldMat;
+	mapBuff_->viewMat = viewMat * projMat;
 	for (int i = 0; i < 100; i++)
 	{
 		Wave& w = mapBuff_->waves[i];
